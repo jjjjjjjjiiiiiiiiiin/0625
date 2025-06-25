@@ -1,6 +1,7 @@
 #import streamlit as st
 
 #st.title("📊 전국 고등학교 학생 분석")
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
