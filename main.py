@@ -9,7 +9,7 @@ import chardet  # 인코딩 감지용
 st.title("📊 서울시 자치구별 학급당 학생 수 (고등학교)")
 
 # 업로드한 파일 경로
-file_path = "/mnt/data/2025년도_학년별·학급별 학생수(고)_전체.csv"
+file_path = "/2025년도_학년별·학급별 학생수(고)_전체.csv"
 
 # ✅ 인코딩 자동 감지
 def detect_encoding(file_path):
