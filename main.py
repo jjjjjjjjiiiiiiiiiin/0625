@@ -6,56 +6,50 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# 웹앱 제목
-st.title("2025년도 시도교육청별 학급당 학생 수")
+st.set_page_config(page_title="서울시 고등학교 분석", layout="wide")
 
-# 데이터 불러오기
-@st.cache_data
-def load_data():
-    df = pd.read_csv("2025년도_학년별·학급별 학생수(고)_전체.csv", encoding='utf-8')
-    return df
+st.title("📊 서울시 자치구별 학급당 학생 수 (고등학교)")
 
-df = load_data()
+# ✅ 업로드한 파일 직접 경로로 불러오기
+file_path = "/mnt/data/2025년도_학년별·학급별 학생수(고)_전체.csv"
+df = pd.read_csv(file_path, encoding='utf-8')
 
-# 데이터 확인
-st.subheader("원본 데이터 (일부 보기)")
-st.dataframe(df.head())
+# ✅ '서울' 포함된 행만 필터링
+서울_df = df[df.apply(lambda row: row.astype(str).str.contains("서울"), axis=1)]
 
-# 시도교육청 컬럼명 추정
-지역_컬럼 = [col for col in df.columns if '시도' in col or '지역' in col or '교육청' in col]
-if 지역_컬럼:
-    지역_컬럼명 = 지역_컬럼[0]
+# ✅ 자치구 추출 (학교명 또는 지역명 컬럼에서 'xx구')
+후보컬럼 = [col for col in 서울_df.columns if '학교명' in col or '지역명' in col or '주소' in col]
+구_컬럼 = None
+
+for col in 후보컬럼:
+    if 서울_df[col].astype(str).str.contains('구').any():
+        구_컬럼 = col
+        break
+
+if 구_컬럼:
+    서울_df['자치구'] = 서울_df[구_컬럼].astype(str).str.extract(r'(\w+구)')
 else:
-    st.error("시도교육청(지역) 정보를 가진 컬럼을 찾을 수 없습니다.")
+    st.error("자치구 정보를 추출할 수 있는 컬럼이 없습니다.")
     st.stop()
 
-# 학급 수와 학생 수 컬럼 추정
-학급수_컬럼 = [col for col in df.columns if '학급수' in col]
-학생수_컬럼 = [col for col in df.columns if '학생수' in col and '계' in col]
+# ✅ 학급수 / 학생수 컬럼 찾기
+학급수_컬럼 = [col for col in df.columns if '학급수' in col][0]
+학생수_컬럼 = [col for col in df.columns if '학생수' in col and '계' in col][0]
 
-if not 학급수_컬럼 or not 학생수_컬럼:
-    st.error("학급 수 또는 학생 수 컬럼이 부족합니다.")
-    st.stop()
+# ✅ 자치구별 집계
+grouped = 서울_df.groupby('자치구')[[학생수_컬럼, 학급수_컬럼]].sum()
+grouped['학급당 학생수'] = grouped[학생수_컬럼] / grouped[학급수_컬럼]
+grouped = grouped.dropna().sort_values('학급당 학생수', ascending=False)
 
-# 집계 및 계산
-grouped = df.groupby(지역_컬럼명)[학생수_컬럼[0], 학급수_컬럼[0]].sum().reset_index()
-grouped["학급당 학생수"] = grouped[학생수_컬럼[0]] / grouped[학급수_컬럼[0]]
-
-# 정렬
-grouped = grouped.sort_values("학급당 학생수", ascending=False)
-
-# 그래프 출력
-st.subheader("지역별 학급당 학생 수")
+# ✅ 시각화
+st.subheader("🧮 자치구별 학급당 학생 수 비교")
 fig, ax = plt.subplots(figsize=(12, 6))
-bars = ax.bar(grouped[지역_컬럼명], grouped["학급당 학생수"], color='skyblue')
+bars = ax.bar(grouped.index, grouped['학급당 학생수'], color='lightblue')
 ax.set_ylabel("학급당 학생 수")
-ax.set_xlabel("시도교육청")
-ax.set_title("시도교육청별 학급당 학생 수")
+ax.set_xlabel("자치구")
+ax.set_title("서울시 자치구별 학급당 학생 수")
 plt.xticks(rotation=45)
-
-# 숫자 표시
 for bar in bars:
-    yval = bar.get_height()
-    ax.text(bar.get_x() + bar.get_width()/2.0, yval + 0.3, f"{yval:.1f}", ha='center', va='bottom')
-
+    y = bar.get_height()
+    ax.text(bar.get_x() + bar.get_width()/2, y + 0.3, f"{y:.1f}", ha='center', fontsize=9)
 st.pyplot(fig)
