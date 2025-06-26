@@ -1,2 +1,5 @@
-matplotlib
-chardet
+streamlit 
+pandas 
+folium 
+streamlit-folium 
+geopandas
