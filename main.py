@@ -1,64 +1,56 @@
-#import streamlit as st
-
-#st.title("📊 전국 고등학교 학생 분석")
-
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import chardet  # 인코딩 감지용
+import folium
+from streamlit_folium import st_folium
+import geopandas as gpd
 
-st.title("📊 서울시 자치구별 학급당 학생 수 (고등학교)")
+# 앱 제목
+st.title("서울시 고등학교 학년별 학급 수 지도")
 
-# 업로드한 파일 경로
-file_path = "/mnt/data/2025년도_학년별·학급별 학생수(고)_전체.csv"
+# CSV 불러오기
+df = pd.read_csv("2025년도_학년별 학급별 학생수(고)_전체.csv", encoding='utf-8')
 
-# ✅ 인코딩 자동 감지
-def detect_encoding(file_path):
-    with open(file_path, 'rb') as f:
-        result = chardet.detect(f.read(10000))  # 앞부분 10KB 샘플
-        return result['encoding']
+# 구 이름 통일 (공백 제거 등)
+df['자치구'] = df['자치구'].str.strip()
 
-# ✅ 파일 읽기
-try:
-    encoding = detect_encoding(file_path)
-    df = pd.read_csv(file_path, encoding=encoding)
-    st.success(f"파일 불러오기 성공 ✅ (인코딩: {encoding})")
-except Exception as e:
-    st.error(f"파일을 불러오는 데 실패했습니다: {e}")
-    st.stop()
+# 학년 선택
+학년목록 = [col for col in df.columns if '학급수' in col]
+선택학년 = st.sidebar.selectbox("학년 선택", 학년목록)
 
-# ▶ 서울시 데이터만 필터링
-서울_df = df[df.apply(lambda row: row.astype(str).str.contains("서울"), axis=1)]
+# 학급 수 집계 (구별로)
+grouped = df.groupby('자치구')[선택학년].sum().reset_index()
 
-# ▶ 자치구 추출
-구_컬럼 = None
-for col in df.columns:
-    if df[col].astype(str).str.contains("구").any():
-        구_컬럼 = col
-        break
+# 서울시 구 경계 geojson (서울시 행정구역)
+@st.cache_data
+def load_geo():
+    url = "https://raw.githubusercontent.com/python-visualization/folium/master/examples/data/seoul_municipalities_geo_simple.json"
+    return gpd.read_file(url)
 
-if 구_컬럼:
-    서울_df['자치구'] = 서울_df[구_컬럼].astype(str).str.extract(r'(\w+구)')
-else:
-    st.error("자치구 정보를 찾을 수 없습니다.")
-    st.stop()
+geo_df = load_geo()
 
-# ▶ 학급수 / 학생수 컬럼 찾기
-학급수_컬럼 = [col for col in df.columns if '학급수' in col][0]
-학생수_컬럼 = [col for col in df.columns if '학생수' in col and '계' in col][0]
+# Folium 지도 생성
+m = folium.Map(location=[37.5665, 126.9780], zoom_start=11)
 
-# ▶ 통계 계산
-grouped = 서울_df.groupby('자치구')[[학생수_컬럼, 학급수_컬럼]].sum()
-grouped['학급당 학생수'] = grouped[학생수_컬럼] / grouped[학급수_컬럼]
-grouped = grouped.dropna().sort_values('학급당 학생수', ascending=False)
+# Choropleth (단계 구분도)
+choropleth = folium.Choropleth(
+    geo_data=geo_df,
+    name="choropleth",
+    data=grouped,
+    columns=["자치구", 선택학년],
+    key_on="feature.properties.name",
+    fill_color="YlGnBu",
+    fill_opacity=0.7,
+    line_opacity=0.2,
+    legend_name=f"{선택학년} (학급 수)",
+).add_to(m)
 
-# ▶ 그래프
-st.subheader("서울시 자치구별 학급당 학생 수")
-fig, ax = plt.subplots(figsize=(12, 6))
-bars = ax.bar(grouped.index, grouped['학급당 학생수'], color='cornflowerblue')
-ax.set_title("서울시 자치구별 학급당 학생 수")
-plt.xticks(rotation=45)
-for bar in bars:
-    y = bar.get_height()
-    ax.text(bar.get_x() + bar.get_width()/2, y + 0.5, f"{y:.1f}", ha='center')
-st.pyplot(fig)
+# 팝업 추가
+folium.LayerControl().add_to(m)
+
+# 지도 출력
+st.subheader(f"선택한 학년: {선택학년}")
+st_data = st_folium(m, width=700, height=500)
+
+# 데이터 표 출력
+st.subheader("구별 학급 수 데이터")
+st.dataframe(grouped)
